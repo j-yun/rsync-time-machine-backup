@@ -22,10 +22,10 @@ $ python3 rsync_backup_worker.py --src=/etc --dst=/backups/my_linux_etc --keep=1
 
 ### Command Line
 ```
-python3 rsync_backup_worker.py --src-charset=utf-8-mac --dst-charset=utf-8 --sshpass-password=mac_user_password --src=MY_MAC_USER_NAME@MAC_IP_ADDRESS_LIKE_192.168.0.100:~/backup/source/directory --dst=/backup/destination/directory/on/linux --keep-owner=true --keep=1000*60*60*24*30
+python3 rsync_backup_worker.py --src-charset=utf-8-mac --dst-charset=utf-8 --sshpass-password=mac_user_password --src=MY_MAC_USER_NAME@MAC_IP_ADDRESS_LIKE_192.168.0.100:~/backup/source/directory --dst=/backup/destination/directory/on/linux --keep-owner=false --keep=1000*60*60*24*30
 ```
 ### Crontab
 ```
 #backup mac data every 2hours on 1minues. backup-count is 100, do not keep owner
-01 */2 * * *  python3 rsync_backup_worker.py --src-charset=utf-8-mac --dst-charset=utf-8 --sshpass-password=mac_user_password --src=MY_MAC_USER_NAME@MAC_IP_ADDRESS_LIKE_192.168.0.100:~/backup/source/directory --dst=/backup/destination/directory/on/linux --keep-owner=true --keep=1000*60*60*24*30
+01 */2 * * *  python3 rsync_backup_worker.py --src-charset=utf-8-mac --dst-charset=utf-8 --sshpass-password=mac_user_password --src=MY_MAC_USER_NAME@MAC_IP_ADDRESS_LIKE_192.168.0.100:~/backup/source/directory --dst=/backup/destination/directory/on/linux --keep-owner=false --keep=1000*60*60*24*30
 ```
