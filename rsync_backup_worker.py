@@ -27,11 +27,21 @@ parser.add_argument('--bwlimit',dest='bwlimit', default=None, required=False, he
 parser.add_argument('--keep-owner',dest='keepowner', default="true", required=False, help='keep file\'s owner')
 parser.add_argument('--sshpass-password',dest='sshpassPasswd', default=None, required=False, help='password for source side. this using \'sshpass -p\' command')
 parser.add_argument('--sshpass-file',dest='sshpassFile', default=None, required=False, help='password-file for source side. this using \'sshpass -f\' command')
+parser.add_argument('--ssh-port',dest='sshport', default=None, required=False, help='sshport if not standard \'22\'')
+parser.add_argument('--debug-donotrun-rsync',dest='doNotRunRsync', default="false", required=False, help='for debug - just print rsync command set and exit')
+parser.add_argument('--keep-min-backup-count',type=int, dest='keepMin', default=-1, required=False, help='keep count of rsynced folder from expiration')
+
 
 args = parser.parse_args()
 
 #### init
 CURRENT_BACKUP_DIR="current-backup"
+LOG_DIR='logs'
+RSYNC_LOG_PREFIX='rsync-'
+LOGGER_LOG_PREFIX='debug-'
+BACKUP_DIR_PREFIX='backup-'
+LOG_EXT='.log'
+
 DT_FORMAT="%Y%m%d_%H%M%S_%f"
 
 nowDt = datetime.now()
@@ -69,10 +79,14 @@ class HelperObject:
 		if self.keepOwner==True:
 			result+=' --group --owner'
 			
-		result+= ' --iconv='+self.args.dstcharset + "," + self.args.srccharset
+		result+= ' --iconv='+self.args.dstcharset + ',' + self.args.srccharset
 
 		if self.args.bwlimit!=None:
 			result += ' --bwlimit='+self.args.bwlimit
+		
+		if self.args.sshport!=None:
+			result += ' -e "ssh -p ' + self.args.sshport + '"'
+
 		return result
 	
 	def setDirs(self):
@@ -90,15 +104,27 @@ class HelperObject:
 	def getDstDir(self):
 		return os.path.abspath(self.dst)
 	def getLogDir(self):
-		return os.path.join(self.getDstDir(),'logs')
-	def getThisTimeBackupDir(self):
-		return os.path.join(self.getDstDir(),'backup-'+self.timeStr)
+		return os.path.join(self.getDstDir(),LOG_DIR)
+
 	def getCurrentBackupDir(self):
 		return os.path.join(self.getDstDir(),CURRENT_BACKUP_DIR)
+
+	def getThisTimeBackupDir(self):
+		return os.path.join(self.getDstDir(),self.getThisTimeBackupDirName())
+	def getThisTimeBackupDirName(self):
+		return BACKUP_DIR_PREFIX+self.timeStr
+
+
 	def makeRSyncLogPath(self):
-		return os.path.join(self.getLogDir(),'rsync-'+self.timeStr+'.log')
+		return os.path.join(self.getLogDir(),self.makeRSyncLogFileName())
+	def makeRSyncLogFileName(self):
+		return RSYNC_LOG_PREFIX+self.timeStr+LOG_EXT
+
 	def makeLoggerLogPath(self):
-		return os.path.join(self.getLogDir(),'debug-'+self.timeStr+'.log')
+		return os.path.join(self.getLogDir(),self.makeLoggerLogFileName())
+	def makeLoggerLogFileName(self):
+		return LOGGER_LOG_PREFIX+self.timeStr+LOG_EXT
+
 
 class FileRemover:
 	def __init__(self):
@@ -189,6 +215,9 @@ rsyncCommand += ' --log-file="' + argsObj.makeRSyncLogPath() + '"'
 rsyncCommand += ' "'+ argsObj.src + '" "' + argsObj.getThisTimeBackupDir()+'"'
 logger.debug(rsyncCommand)
 
+if argsObj.args.doNotRunRsync=="true":
+	exit()
+
 
 rsyncProc = subprocess.Popen(rsyncCommand,shell=True,stdout=subprocess.PIPE,stdin=subprocess.PIPE)
 for line in io.TextIOWrapper(rsyncProc.stdout, encoding="utf-8"):  # or another encoding
@@ -199,6 +228,7 @@ if os.path.exists(argsObj.getThisTimeBackupDir())==False:
 	logger.debug('Rsync backup failed. try next time.')
 	exit()
 
+#Unlink current-backup directory
 logger.debug('remove '+CURRENT_BACKUP_DIR+' dir : '+argsObj.getCurrentBackupDir())
 try:
 	os.unlink(argsObj.getCurrentBackupDir())
@@ -211,6 +241,7 @@ else:
 	logger.debug('still exists!')
 
 
+#Replace current-backup directory for new rsync destination folder
 if os.path.exists(argsObj.getThisTimeBackupDir()):
 	logger.debug('create new '+CURRENT_BACKUP_DIR+' dir from : '+argsObj.getThisTimeBackupDir())
 	os.symlink(argsObj.getThisTimeBackupDir(),argsObj.getCurrentBackupDir())
@@ -226,9 +257,30 @@ fileRemover = FileRemover()
 
 backupDt=None
 
+
+keepMinCount = argsObj.args.keepMin
+logger.debug('Keep backups from expiration : '+str(keepMinCount))
+
 logger.debug('REMOVE EXPIRED BACKUPS')
-for item in os.listdir(argsObj.getDstDir()):
+
+itemList = os.listdir(argsObj.getDstDir())
+
+#for itemListCount - current-backup, logs, thisTimeBackup
+itemCount = len(itemList)-3
+
+
+thisTimeBackupDirName = argsObj.getThisTimeBackupDirName()
+thisTimeRSyncLogName = argsObj.makeRSyncLogFileName()
+thisTimeLoggerLogName = argsObj.makeLoggerLogFileName()
+
+
+for item in itemList:
 	logger.debug("======================")
+
+	if item==CURRENT_BACKUP_DIR or item==LOG_DIR or item==thisTimeBackupDirName:
+		logger.debug("pass "+item)
+		continue
+
 	logger.debug(item)
 	if item.find("backup-")==0:
 		itemDtStr = item.replace("backup-",'')
@@ -238,34 +290,27 @@ for item in os.listdir(argsObj.getDstDir()):
 		except Exception as e:
 			logger.exception(e)
 			continue
+
 		dtDelta = nowDt-backupDt
 		logger.debug("Datetime Delta : "+ str(dtDelta.total_seconds()))
 		if dtDelta.total_seconds() > argsObj.keep:
+			logger.debug("itemCount : " + str(itemCount))
+
+			if keepMinCount != -1 and itemCount <= keepMinCount:
+				logger.debug("keep backup folder from expiration by keepMinBackupCount")
+				break
+
+			itemCount = itemCount - 1
 			logger.debug("remove this backup")
 			fileRemover.rmtree(os.path.join(argsObj.getDstDir(),item))
+		
+			rsyncLogItem = RSYNC_LOG_PREFIX+itemDtStr+LOG_EXT
+			loggerLogItem = LOGGER_LOG_PREFIX+itemDtStr+LOG_EXT
+			logger.debug('REMOVE EXPIRED LOGS : ' + rsyncLogItem + ', ' + loggerLogItem)
+			os.remove(os.path.join(argsObj.getLogDir(),rsyncLogItem))
+			os.remove(os.path.join(argsObj.getLogDir(),loggerLogItem))
+		
 		else:
 			logger.debug("keep this backup")
 		
 
-logger.debug('REMOVE EXPIRED LOGS')
-for item in os.listdir(argsObj.getLogDir()):
-	logger.debug("======================")
-	logger.debug(item)
-	if item.find("debug-")==0 or item.find('rsync-')==0:
-		itemDtStr = item.replace("debug-",'')
-		itemDtStr = itemDtStr.replace('rsync-','')
-		itemDtStr = itemDtStr.replace('.log','')
-
-		logger.debug("this is log file: " + itemDtStr)
-		try:
-			backupDt = datetime.strptime(itemDtStr,DT_FORMAT)
-		except Exception as e:
-			logger.exception(e)
-			continue
-		dtDelta = nowDt-backupDt
-		logger.debug("Datetime Delta : "+ str(dtDelta.total_seconds()))
-		if dtDelta.total_seconds() > argsObj.keep:
-			logger.debug("remove this log")
-			os.remove(os.path.join(argsObj.getLogDir(),item))
-		else:
-			logger.debug("keep this log")
