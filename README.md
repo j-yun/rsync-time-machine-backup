@@ -1,8 +1,9 @@
-# rsync-time-machine
+# rsync-time-machine-backup
 Python Script. Time Machine style backup worker with Rsync. 
 
 # Requirements
 * python version >= 3.0
+* rsync version >= 3.0
 
 # Example
 ## Linux local storage backup ( backing up a '/etc' directory ) for 15 days
