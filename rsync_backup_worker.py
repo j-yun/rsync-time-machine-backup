@@ -241,10 +241,24 @@ else:
 	logger.debug('still exists!')
 
 
+
 #Replace current-backup directory for new rsync destination folder
+
+# Solution 1: Realative path
 if os.path.exists(argsObj.getThisTimeBackupDir()):
-	logger.debug('create new '+CURRENT_BACKUP_DIR+' dir from : '+argsObj.getThisTimeBackupDir())
-	os.symlink(argsObj.getThisTimeBackupDir(),argsObj.getCurrentBackupDir())
+        logger.debug('create new '+CURRENT_BACKUP_DIR+' symlink from : '+argsObj.getThisTimeBackupDir())
+        finalRelPath = os.path.relpath(argsObj.getThisTimeBackupDir(), argsObj.getDstDir())
+        os.symlink(finalRelPath,argsObj.getCurrentBackupDir())
+
+# Solution 2: Absolute path
+# symlinkResolvedThisTimeBackupDir = os.path.realpath(argsObj.getThisTimeBackupDir())
+
+# if os.path.islink(symlinkResolvedThisTimeBackupDir):
+#         symlinkResolvedThisTimeBackupDir  = os.readlink(symlinkResolvedThisTimeBackupDir)
+
+# if os.path.exists(symlinkResolvedThisTimeBackupDir):
+#         logger.debug('create new '+CURRENT_BACKUP_DIR+' symlink from from : '+symlinkResolvedThisTimeBackupDir)
+#         os.symlink(symlinkResolvedThisTimeBackupDir,argsObj.getCurrentBackupDir())
 
 if os.path.exists(argsObj.getCurrentBackupDir())==False:
 	logger.debug('does not exists!')
